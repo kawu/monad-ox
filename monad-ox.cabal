@@ -1,0 +1,31 @@
+name:               monad-ox
+version:            0.0.1
+synopsis:           Observation extraction monad
+description:
+    TODO.
+license:            BSD3
+license-file:       LICENSE
+cabal-version:      >= 1.6
+copyright:          Copyright (c) 2012 IPI PAN
+author:             Jakub Waszczuk
+maintainer:         waszczuk.kuba@gmail.com
+stability:          experimental
+category:           Control, Natural Language Processing
+homepage:           https://github.com/kawu/monad-ox
+build-type:         Simple
+
+library
+    build-depends:
+        base >= 4 && < 5
+      , containers
+      , vector
+      , mtl >= 2
+
+    exposed-modules:
+        Control.Monad.Ox
+
+    ghc-options: -Wall
+
+source-repository head
+    type: git
+    location: git://github.com/kawu/monad-ox.git
