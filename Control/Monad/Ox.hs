@@ -10,12 +10,14 @@ module Control.Monad.Ox
 , justTrue
 , group
 , memoize
+, evalOx
 ) where
 
 import Control.Applicative ((<$>), (<*), (*>))
 import Control.Arrow (first)
 import Control.Monad.RWS hiding (when)
 import qualified Data.Vector as V
+import qualified Data.MemoCombinators as Memo
 
 -- | Observation type identifier.  It consists of a list of
 -- integers, each integer representing the state of the Ox
@@ -29,7 +31,7 @@ inc (x:xs)  = x+1 : xs
 
 -- | Push new value to the Id stack.
 grow :: Id -> Id
-grow xs = 1 : xs
+grow xs = 0 : xs
 
 -- | Pop value from the stack.
 shrink :: Id -> Id
@@ -100,6 +102,9 @@ save ox = do
     x <- ox
     withId $ \i -> tell [(i, x)]
 
+-- | Do not use the plain 'Control.Monad.when' function unless you really
+-- know what you are doing!  The 'when' here guarantees that IDs assigned to
+-- observations *after* the 'when' code block will be tracked properly.
 when :: Ox t w Bool -> Ox t w a -> Ox t w (Maybe a)
 when cond act = incId >> cond >>= \b -> case b of
     False   -> return Nothing
@@ -124,11 +129,19 @@ group act = do
     setId i
     return x
 
--- | Memoize the given function on sentence positions.  As a first argument
--- the sentence length has to be supplied.
-memoize :: Int -> (Int -> Ox t w a) -> Int -> Ox t w a
-memoize n f = \k -> if k < 0 || k >= n
-    then f k
-    else memo V.! k
-  where
-    memo = V.fromList [f k | k <- [0..n-1]]
+-- -- | Memoize the given function on sentence positions.  As a first argument
+-- -- the sentence length has to be supplied.
+-- memoize :: Int -> (Int -> Ox t w a) -> Int -> Ox t w a
+-- memoize n f = \k -> if k < 0 || k >= n
+--     then f k
+--     else memo V.! k
+--   where
+--     memo = V.fromList [f k | k <- [0..n-1]]
+
+-- | TODO: Isn't that unsafe? What if the given function
+-- changes the state of the Ox monad?
+memoize :: (Int -> Ox t w a) -> Int -> Ox t w a
+memoize f = Memo.integral f
+
+evalOx :: Ox t w a -> V.Vector t -> [(Id, w)]
+evalOx ox sent = (map (first reverse) . snd) (evalRWS ox sent [0])
