@@ -1,8 +1,12 @@
 name:               monad-ox
-version:            0.0.1
-synopsis:           Observation extraction monad
+version:            0.1.0
+synopsis:           Monad for observation extraction
 description:
-    TODO.
+    The library provides an Ox monad and accompanying functions which
+    are intended to simplify writing functional expressions over input
+    sentence with arbitrary type of token.  Values of such functional
+    expressions can be subsequently used as observations in input data
+    for sequential classifiers.
 license:            BSD3
 license-file:       LICENSE
 cabal-version:      >= 1.6
@@ -24,6 +28,7 @@ library
 
     exposed-modules:
         Control.Monad.Ox
+        Control.Monad.Ox.String
 
     ghc-options: -Wall
 

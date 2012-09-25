@@ -1,20 +1,26 @@
--- | An Ox monad facilitates defining observation extraction rules.
+-- | The Ox monad facilitates writing functional expressions over the
+-- input sentence with arbitrary type of sentence token.
 
 module Control.Monad.Ox
-( Ox
+( 
+-- * Types
+  Ox
 , Id
 
+-- * Functions
 , atWith
 , atsWith
-
 , save
 , saves
-
 , when
 , whenJT
 , group
-, memoize
+
+-- * Ox monad execution
 , execOx
+
+-- * Utilities
+, memoize
 ) where
 
 import Control.Applicative ((<$>), (<*), (*>))
@@ -69,31 +75,39 @@ setId :: Id -> Ox t w ()
 setId = lift . put
 {-# INLINE setId #-}
 
+-- | Update the current identifier of the Ox monad.
 updateId :: (Id -> Id) -> Ox t w ()
 updateId f = do
     i <- getId
     setId (f i)
 
+-- | Increase the current identifier of the Ox monad.
 incId :: Ox t w ()
 incId = updateId inc
 
--- | Perform the identifier-dependent action and increase
--- the identifier.
+-- | Perform the identifier-dependent action and increase the identifier.
 withId :: (Id -> Ox t w a) -> Ox t w a
 withId act = do
     x <- act =<< getId
     incId
     return x
 
+-- | Perform the Ox action on the lower level.
 below :: Ox t w a -> Ox t w a
 below act = updateId grow *> act <* updateId shrink
 
+-- | Value of the 't -> a' function with respect to the given sentence
+-- and sentence position.  Return Nothing if the position is out of
+-- bounds.
 atWith :: V.Vector t -> (t -> a) -> Int -> Maybe a
 atWith xs f k =
     if k < 0 || k >= V.length xs
         then Nothing
         else Just $ f (xs V.! k)
 
+-- | Value of the 't -> [a]' function with respect to the given sentence
+-- and sentence position.  Return empty list if the position is out of
+-- bounds.
 atsWith  :: V.Vector t -> (t -> [a]) -> Int -> [a]
 atsWith xs f k =
     if k < 0 || k >= V.length xs
@@ -104,12 +118,13 @@ atsWith xs f k =
 saves :: [w] -> Ox t w ()
 saves xs = withId $ \i -> tell [(i, x) | x <- xs]
 
+-- | Save the observation value.
 save :: Maybe w -> Ox t w ()
 save = saves . maybeToList
 
--- | Do not use the plain 'Control.Monad.when' function unless you really
--- know what you are doing!  The 'when' here guarantees that IDs assigned to
--- observations *after* the 'when' code block will be tracked properly.
+-- | Perform the Ox action only when the 'cond' is True.  It works like
+-- the standard 'Control.Monad.when' function but also changes the current
+-- identifier value.
 when :: Bool -> Ox t w a -> Ox t w (Maybe a)
 when cond act = do
     x <- case cond of
@@ -118,8 +133,7 @@ when cond act = do
     incId
     return x
 
--- | When the condition monad returns the Just True value, perform
--- the given action.
+-- | Perform the action only when the given condition is equal to Just True.
 whenJT :: Maybe Bool -> Ox t w a -> Ox t w (Maybe a)
 whenJT cond =
     when (justTrue cond)
@@ -127,9 +141,9 @@ whenJT cond =
     justTrue Nothing  = False
     justTrue (Just x) = x
 
--- | Set all embedded observations indistinguishable with respect
+-- | Make all embedded observations to be indistinguishable with respect
 -- to their top-most identifier components.
--- FIXME: Perhaps should set only the current level, not the deeper ones.
+-- TODO: Perhaps should set only the current level, not the deeper ones.
 group :: Ox t w a -> Ox t w a
 group act = do 
     i <- getId
@@ -138,9 +152,13 @@ group act = do
     setId (inc i)
     return x
 
+-- | Memoize a function.  It can be useful when computing observation value
+-- for a particular position is expensive and should be performed only once.
 memoize :: (Int -> a) -> Int -> a
 memoize f = Memo.integral f
 
+-- | Execute the Ox monad and retrieve the saved (with the 'save' and
+-- 'saves' functions) results.
 execOx :: Ox t w a -> [(Id, w)]
 execOx ox =
     (map (first reverse) . fst)
