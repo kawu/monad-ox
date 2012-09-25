@@ -3,24 +3,30 @@
 module Control.Monad.Ox
 ( Ox
 , Id
-, at
+
+, atWith
+, atsWith
+
 , save
+, saves
+
 , when
 , whenJT
-, justTrue
 , group
 , memoize
-, evalOx
+, execOx
 ) where
 
 import Control.Applicative ((<$>), (<*), (*>))
 import Control.Arrow (first)
-import Control.Monad.RWS hiding (when)
+import Control.Monad.State hiding (when)
+import Control.Monad.Writer hiding (when)
+import Data.Maybe (maybeToList)
 import qualified Data.Vector as V
 import qualified Data.MemoCombinators as Memo
 
 -- | Observation type identifier.  It consists of a list of
--- integers, each integer representing the state of the Ox
+-- integers, each integer representing a state of the Ox
 -- monad on the particular level.
 type Id = [Int]
 
@@ -31,7 +37,7 @@ inc (x:xs)  = x+1 : xs
 
 -- | Push new value to the Id stack.
 grow :: Id -> Id
-grow xs = 0 : xs
+grow xs = 1 : xs
 
 -- | Pop value from the stack.
 shrink :: Id -> Id
@@ -48,25 +54,19 @@ setTop :: Int -> Id -> Id
 setTop _ [] = error "setTop: null id"
 setTop x (_:xs) = x:xs
 
--- | The Ox monad is really an RWS monad with the sentence stored in the
--- reader part, observation type identifier handled by the state part
--- and the resulting observation values paired with identifiers printed
--- using the writer part.
-type Ox t w a = RWS (V.Vector t) [(Id, w)] Id a
-
--- | Retrieve the underlying sentence.
-getSent :: Ox t w (V.Vector t)
-getSent = ask
-{-# INLINE getSent #-}
+-- | The Ox is a monad stack with observation type identifier handled by
+-- the state monad and the resulting observation values paired with identifiers
+-- printed using the writer monad.
+type Ox t w a = WriterT [(Id, w)] (State Id) a
 
 -- | Retrieve the current identifier value.
 getId :: Ox t w Id
-getId = get
+getId = lift get
 {-# INLINE getId #-}
 
 -- | Set the new identifier value.
 setId :: Id -> Ox t w ()
-setId = put
+setId = lift . put
 {-# INLINE setId #-}
 
 updateId :: (Id -> Id) -> Ox t w ()
@@ -88,60 +88,60 @@ withId act = do
 below :: Ox t w a -> Ox t w a
 below act = updateId grow *> act <* updateId shrink
 
-at  :: (t -> a) -> Int -> Ox t w (Maybe a)
-at f k = do
-    sent <- getSent
-    return $ if k < 0 || k >= V.length sent
+atWith :: V.Vector t -> (t -> a) -> Int -> Maybe a
+atWith xs f k =
+    if k < 0 || k >= V.length xs
         then Nothing
-        else Just $ f (sent V.! k)
+        else Just $ f (xs V.! k)
 
--- | Save the observation value in the writer component
--- of the Ox monad.
-save :: Ox t w w -> Ox t w ()
-save ox = do
-    x <- ox
-    withId $ \i -> tell [(i, x)]
+atsWith  :: V.Vector t -> (t -> [a]) -> Int -> [a]
+atsWith xs f k =
+    if k < 0 || k >= V.length xs
+        then []
+        else f (xs V.! k)
+
+-- | Save observation values in the writer monad of the Ox stack.
+saves :: [w] -> Ox t w ()
+saves xs = withId $ \i -> tell [(i, x) | x <- xs]
+
+save :: Maybe w -> Ox t w ()
+save = saves . maybeToList
 
 -- | Do not use the plain 'Control.Monad.when' function unless you really
 -- know what you are doing!  The 'when' here guarantees that IDs assigned to
 -- observations *after* the 'when' code block will be tracked properly.
-when :: Ox t w Bool -> Ox t w a -> Ox t w (Maybe a)
-when cond act = incId >> cond >>= \b -> case b of
-    False   -> return Nothing
-    True    -> Just <$> below act
-
-justTrue :: Maybe Bool -> Bool
-justTrue Nothing    = False
-justTrue (Just x)   = x
+when :: Bool -> Ox t w a -> Ox t w (Maybe a)
+when cond act = do
+    x <- case cond of
+        False -> return Nothing
+        True  -> Just <$> below act
+    incId
+    return x
 
 -- | When the condition monad returns the Just True value, perform
 -- the given action.
-whenJT :: Ox t w (Maybe Bool) -> Ox t w a -> Ox t w (Maybe a)
-whenJT cond = when (justTrue <$> cond)
+whenJT :: Maybe Bool -> Ox t w a -> Ox t w (Maybe a)
+whenJT cond =
+    when (justTrue cond)
+  where
+    justTrue Nothing  = False
+    justTrue (Just x) = x
 
 -- | Set all embedded observations indistinguishable with respect
 -- to their top-most identifier components.
+-- FIXME: Perhaps should set only the current level, not the deeper ones.
 group :: Ox t w a -> Ox t w a
 group act = do 
-    i <- incId >> getId
+    i <- getId
     let top = getTop i
     x <- censor (map . first . setTop $ top) act
-    setId i
+    setId (inc i)
     return x
 
--- -- | Memoize the given function on sentence positions.  As a first argument
--- -- the sentence length has to be supplied.
--- memoize :: Int -> (Int -> Ox t w a) -> Int -> Ox t w a
--- memoize n f = \k -> if k < 0 || k >= n
---     then f k
---     else memo V.! k
---   where
---     memo = V.fromList [f k | k <- [0..n-1]]
-
--- | TODO: Isn't that unsafe? What if the given function
--- changes the state of the Ox monad?
-memoize :: (Int -> Ox t w a) -> Int -> Ox t w a
+memoize :: (Int -> a) -> Int -> a
 memoize f = Memo.integral f
 
-evalOx :: Ox t w a -> V.Vector t -> [(Id, w)]
-evalOx ox sent = (map (first reverse) . snd) (evalRWS ox sent [0])
+execOx :: Ox t w a -> [(Id, w)]
+execOx ox =
+    (map (first reverse) . fst)
+    (runState (execWriterT ox) [1])
