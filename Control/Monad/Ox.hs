@@ -18,9 +18,6 @@ module Control.Monad.Ox
 
 -- * Ox monad execution
 , execOx
-
--- * Utilities
-, memoize
 ) where
 
 import Control.Applicative ((<$>), (<*), (*>))
@@ -29,7 +26,6 @@ import Control.Monad.State hiding (when)
 import Control.Monad.Writer hiding (when)
 import Data.Maybe (maybeToList)
 import qualified Data.Vector as V
-import qualified Data.MemoCombinators as Memo
 
 -- | Observation type identifier.  It consists of a list of
 -- integers, each integer representing a state of the Ox
@@ -151,11 +147,6 @@ group act = do
     x <- censor (map . first . setTop $ top) act
     setId (inc i)
     return x
-
--- | Memoize a function.  It can be useful when computing observation value
--- for a particular position is expensive and should be performed only once.
-memoize :: (Int -> a) -> Int -> a
-memoize f = Memo.integral f
 
 -- | Execute the Ox monad and retrieve the saved (with the 'save' and
 -- 'saves' functions) results.
