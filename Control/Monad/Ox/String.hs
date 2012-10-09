@@ -56,6 +56,6 @@ shape = map translate
         | otherwise      = 'x'
 
 -- | Pack the string, that is remove all adjacent repetitions,
--- for example /"aabcccdde" -> "abcde"/.
+-- for example /aabcccdde -> abcde/.
 pack :: String -> String
 pack = map head . L.group
