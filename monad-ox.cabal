@@ -1,5 +1,5 @@
 name:               monad-ox
-version:            0.2.0
+version:            0.3.0
 synopsis:           Monad for observation extraction
 description:
     The library provides an Ox monad and accompanying functions which
